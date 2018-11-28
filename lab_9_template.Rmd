@@ -3,6 +3,8 @@ title: "Lab 9 - Multiple Linear Regression"
 author: "Sam Csik"
 output:
   html_document: default
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -41,10 +43,15 @@ library(stargazer)
 
 # a. Read in data as 'homes':
 
+homes <- read_csv("slo_homes.csv")
+
+# H1: as square footage increases, housing price shold increase
+#H2: forclosure should sell for less than an non-foreclosed home
 
 # b. Filter to only include cities "San Luis Obispo", "Santa Maria-Orcutt", "Atascadero", and "Arroyo Grande", and call this new subset 'homes_sub':
 
-
+homes_sub <- homes %>% 
+  filter(City == "San Luis Obispo" | City == "Santa Maria-Orcutt" | City == "Atascadero" | City == "Arroyo Grande")
 
 ```
 
@@ -86,7 +93,9 @@ by_sqft <- ggplot(homes_sub, aes(x = SqFt, y = Price)) +
 
 by_sqft
 
-# Observations here: Does relationship appear ~ linear? Anything else we can pick out re: trends, outliers, etc.? What is the general trend? Any outliers? Is there reason enough for us to omit it?
+# Observations here: Does relationship appear ~ linear? (YES) Anything else we can pick out re: trends, outliers, etc.? What is the general trend? Any outliers? Is there reason enough for us to omit it?
+
+# KEEP IN MIND THAT THE MORE VARIABLES YOU INCLUDE ON A GRAPHIC, THE HARDER IT IS TO INTERPRET
 
 ```
 
@@ -107,8 +116,18 @@ Use summary() to view the model output and statistics.
 
 # a. Saturated model: 
 
+homes_lm1 <- lm(Price ~ City + Bedrooms + Bathrooms + SqFt + PricePerSqFt + Status, data = homes_sub) #finding model to find price as a functiono of....
+#PricePerSqFt is perfectly derived (i.e. calculated from Price) from the output variable (Price / SqFt) so be VERY wary of this as a covariate; no random variation, sampling error, etc.
+
+# we should be worried about using this model
+# if everything about 2 houses was otherwise the same, if you increase the # of bedrooms by 1, the house price goes down by $30,792.80
+# ...Forclosre has been selected as dummy variable...Status Regular (-19792.3)
+# all of these things suggest that we have an overspecified model and maybe collinearity
+
 
 # b. Model summary:
+
+summary(homes_lm1)
 
 ```
 
@@ -118,30 +137,47 @@ The next model: Exclude price per square foot, and bedrooms/bathrooms (since the
 
 # a. Updated model with variables City, SqFt, and Status:
 
+homes_lm2 <- lm(Price ~ City + SqFt + Status, data = homes_sub)
+
 # b. Model summary:
 
+summary(homes_lm2)
+
+# for every 1 sqft increase in a house, i'd expect this to go up $245.93 (makes sense)
+# if we buy a house for a regular sale compared to a foreclosure sale, we'd expect to pay ~$200,000 more (makes sense)
+# 0.94 p-value tells us we don't have enough evidence to suggest we short sales and foreclosure sales don't sig. differ, but regular and foreclosure sales do!
+# house in Atascadero should sell for ~$202,000 less than in Arroyo Grande (reference variable)
+
+# when we do multiple linaer regression, we use an adjusted R2 value (52.7% of housing price is explained by sqft??)
+
+# other variables to include in model: distance from beach, school district, age of home, etc.
 ```
 
 Wait...but what if I wanted everything to be with respect to a Regular sale status? Then I need to change my factor levels. We've done this before, here we'll use a different function (fct_relevel) from *forcats* package in the tidyverse. 
 
 ```{r fct_relevel}
 
-# a. Set Status to class 'factor'
+# a. Set Status to class 'factor' (it was originally a character)
 
+homes_sub$Status <- factor(homes_sub$Status)
 
 # b. Check to ensure it's a factor now
-
+#use class()
 
 # c. Check levels:
-
+#use levels()
 
 # d. Reassign reference level of "Status" to "Regular":
+#fct_relevel() function in forcats
 
+homes_sub$Status <- fct_relevel(homes_sub$Status, "Regular") # can explicitly set level of columsn by writing them out in that order, otherwise they'll be listed alphabetically after the reference level
 
 # e. Now run the regression again - same equation, but now the reference level is different (Status = Regular): 
 
+homes_lm3 <- lm(Price ~ City + SqFt + Status, data = homes_sub)
+summary(homes_lm3)
 
-
+#note that now Regular doesn't show up in model summary because we've assigned this as the new reference variable
 ```
 
 Interpret the coefficients and statistical outcomes above. 
@@ -157,6 +193,15 @@ Then we can evaluate model diagnostics using the plot() function:
 
 # a. Model diagnostics:
 
+plot(homes_lm3)
+
+# Residuals vs. Fitted: don't let a few data points influence your overall impressions about assumptions of heteroscedasticity (by and large, there's no trend here for our model)
+
+# QQ Plot: data look very normally distributed
+
+#if you were an investor, purchase house # 188 because it sold for really cheap despite all it's features
+#house # 294 is celebrity status house
+
 ```
 
 ###6. Model comparison by Akaike Information Criterion
@@ -167,8 +212,12 @@ The AIC is a quantitative metric for model "optimization" that balances complexi
 
 # a. AIC values for each model
 
+full_aic <- AIC(homes_lm1)
+final_aic <- AIC(homes_lm3) # greater than full model!!??
+
 # Answer: which would you pick? 
 
+# still pic lm3 despite the fact that it has an AIC value greater than the full model, but our total comprehesive view of what's going on, we should definitely pick lm3 still (based on our conceptual understanding of processes)
 ```
 
 ###7. Regression tables with *stargazer*
@@ -177,7 +226,7 @@ The AIC is a quantitative metric for model "optimization" that balances complexi
 
 # a. Prepare a nice regression table:
 
-
+stargazer(homes_lm1, homes_lm3, type = "html")
 
 # Note: If you want to work with this in Word, save to html, open, copy and paste into Word. 
 
@@ -229,9 +278,11 @@ Make predictions for the new data using predict():
 
 # a. Make predictions using the new data frame:
 
+price_predict <- predict(homes_lm3, newdata = df_new, se.fit = TRUE, interval = "confidence") # just gives you a vector of actual values
+
 # b. Bind predictions to the data to make it actually useful:
 
-
+predict_df <- data.frame(df_new, price_predict)
 
 ```
 
@@ -241,7 +292,13 @@ Then visualize it!
 
 # Create a line graph with square footage on the x-axis, predicted price on y-axis, with color dependent on City and facet_wrapped by sale status (follow along):
 
+predict_graph <- ggplot(predict_df, aes(x = SqFt, y = fit.fit)) +
+  geom_line(aes(color = City)) +
+  geom_point(data = homes_sub, aes(x = SqFt, y = Price), alpha = 0.1) +
+  facet_wrap(~Status)
 
+# highest sales price = SLO, lowest for Santa Maria-Orcutt
+# increase in home sale price with increase in sqft 
 ```
 
 END LAB
